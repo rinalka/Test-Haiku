@@ -1,8 +1,21 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>HighQ — Headlines into Haiku</title>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>HighQ</title>
 <style>
-:root{color-scheme:light}*{box-sizing:border-box}body{margin:0;background:#f5f2ea;color:#24352f;font:17px/1.6 Georgia,serif}main{max-width:790px;margin:0 auto;padding:48px 22px 80px}header{text-align:center;border-bottom:1px solid #c9c9bb;padding-bottom:25px}h1{font-weight:normal;letter-spacing:.09em;font-size:clamp(40px,7vw,68px);margin:0}header p{margin:0;color:#68756d;font:14px/1.5 system-ui,sans-serif;letter-spacing:.09em;text-transform:uppercase}.intro{text-align:center;color:#67726b;margin:26px auto;max-width:550px}button{cursor:pointer;background:#28483c;color:white;border:0;border-radius:4px;padding:13px 23px;font:600 15px system-ui,sans-serif}button:disabled{opacity:.6;cursor:wait}.actions{text-align:center;margin:25px 0}.poem{background:#fffdf8;border:1px solid #e1dfd5;text-align:center;padding:55px 20px;box-shadow:0 7px 30px #223c3010}.poem p{font-size:clamp(23px,4vw,31px);line-height:1.75;margin:0;white-space:pre-line}.poem small{display:block;margin-top:28px;color:#788079;font:12px system-ui,sans-serif}.status{text-align:center;font:13px/1.5 system-ui,sans-serif;color:#627067;min-height:23px;margin:17px 0 35px}.sources{margin-top:42px}h2{font:600 14px system-ui,sans-serif;letter-spacing:.13em;text-transform:uppercase;border-bottom:1px solid #cccfc5;padding-bottom:10px}ul{list-style:none;padding:0}li{padding:9px 0;border-bottom:1px solid #e3e3d9;font:14px/1.5 system-ui,sans-serif}li b{color:#506d60;margin-right:10px}a{color:#244d40;text-decoration:none}a:hover{text-decoration:underline}.note{color:#758078;font:12px/1.6 system-ui,sans-serif;margin-top:28px}</style></head>
-<body><main><header><h1>HighQ</h1><p>Nadia's World Today</p></header><div class="actions"><button id="generate">Make another haiku</button></div><section class="poem" aria-live="polite"><p id="haiku">A quiet page waits\nFor distant news and weather\nTo stir up the words</p><small id="theme">Waiting for the world…</small></section><div class="status" id="status">Loading sources…</div><section class="sources"><h2>Today's ingredients</h2><ul id="ingredients"></ul></section></main>
+:root{color-scheme:light}*{box-sizing:border-box}
+body{margin:0;background:#f4f0f6;color:#30213e;font:17px/1.6 Georgia,serif}
+main{max-width:790px;margin:0 auto;padding:48px 22px 80px}
+header{text-align:center;border-bottom:1px solid #d9d0df;padding-bottom:25px}
+h1{font-weight:normal;letter-spacing:.09em;font-size:clamp(40px,7vw,68px);margin:0;color:#291b39}
+button{cursor:pointer;background:#49365e;color:#faf8fc;border:0;border-radius:4px;padding:13px 23px;font:600 15px system-ui,sans-serif}
+button:hover{background:#352545}button:disabled{opacity:.6;cursor:wait}
+.actions{text-align:center;margin:25px 0}
+.poem{background:#fbf9fc;border:1px solid #e5deea;text-align:center;padding:55px 20px;box-shadow:0 7px 30px #32243b0a}
+.poem p{font-size:clamp(23px,4vw,31px);line-height:1.75;margin:0;white-space:pre-line;color:#30213e}
+.sources{margin-top:42px}h2{font:600 14px system-ui,sans-serif;letter-spacing:.13em;text-transform:uppercase;border-bottom:1px solid #d9d0df;padding-bottom:10px;color:#49365e}
+ul{list-style:none;padding:0}li{padding:9px 0;border-bottom:1px solid #e8e1ec;font:14px/1.5 system-ui,sans-serif}
+a{color:#47315c;text-decoration:none}a:hover{text-decoration:underline}
+</style></head>
+<body><main><header><h1>HighQ</h1></header><div class="actions"><button id="generate">Make another haiku</button></div><section class="poem" aria-live="polite"><p id="haiku">A quiet page waits\nFor distant news and weather\nTo stir up the words</p></section><section class="sources"><h2>Today's ingredients</h2><ul id="ingredients"></ul></section></main>
 <script>
 'use strict';
 const feeds=[
@@ -26,7 +39,7 @@ async function news(feed){
  finally{clearTimeout(t)}
 }
 const weatherCode=c=>c===0?'clear skies':c<=3?'clouds and sun':c<=48?'mist and fog':c<=67?'rain':c<=77?'snow':c<=82?'rain showers':c<=86?'snow showers':'stormy skies';
-async function weather(name,lat,lon){try{const j=await fetchWithTimeout(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code&timezone=auto`);const w=j.current;return{name,title:`${Math.round(w.temperature_2m)}°C, ${weatherCode(w.weather_code)}`,ok:true,link:'https://open-meteo.com/'}}catch(e){return{name,title:'Weather temporarily unavailable',ok:false,link:'https://open-meteo.com/'}}}
+async function weather(name,lat,lon){try{const j=await fetchWithTimeout(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code&timezone=auto`);const w=j.current;return{name,title:`${Math.round(w.temperature_2m)}°C, ${weatherCode(w.weather_code)}`,ok:true,link:'https://open-meteo.com/en/docs'}}catch(e){return{name,title:'Weather temporarily unavailable',ok:false,link:'https://open-meteo.com/en/docs'}}}
 const literatureTopics=[
  ['Literature','Literature'],['Poetry','Poetry'],['Modernist literature','Modernist_literature'],
  ['Haiku','Haiku'],['Canadian literature','Canadian_literature'],['Romantic poetry','Romantic_poetry']
@@ -121,22 +134,22 @@ function generate(){
  }
  last=lines.join('|');
  $('haiku').textContent=lines.join('\n');
- $('theme').textContent='Weather · News · '+({literature:'Literature',art:'Art & music',place:'Places & history'}[kind]);
+ 
 }
 function render(){
  const ul=$('ingredients');ul.replaceChildren();
- ingredients.forEach(x=>{
+ [...ingredients].sort(()=>Math.random()-0.5).forEach(x=>{
   const li=document.createElement('li'),a=document.createElement('a');
-  a.textContent=x.name.replace(/^Wikipedia · /,'');
+  a.textContent=x.name.startsWith('Wikipedia · ') ? x.name.slice(12) : (x.name.endsWith('weather') ? x.name.replace(' weather','')+' weather' : (x.ok && x.title && x.name !== 'TSX market movers (news)' ? x.title : x.name));
   a.href=x.link;a.target='_blank';a.rel='noopener noreferrer';
   li.append(a);ul.append(li);
  });
- $('status').textContent='Five pages selected · Generate another haiku for a new selection';
+
  generate();$('generate').disabled=false;
 }
 async function refresh(){
  $('generate').disabled=true;
- $('status').textContent='Choosing one weather report, one news story, one literature article, one art or music article, and one place…';
+
  try{
   ingredients=await Promise.all([
    weather(...random(weatherPlaces)),news(random(feeds)),
@@ -145,7 +158,7 @@ async function refresh(){
    wikipediaTopic(random(placeTopics))
   ]);
   render();
- }catch(e){$('status').textContent='Some sources could not be loaded';$('generate').disabled=false;generate()}
+ }catch(e){$('generate').disabled=false;generate()}
 }
 $('generate').addEventListener('click',refresh);
 refresh();
