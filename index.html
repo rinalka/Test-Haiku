@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Test Haiku</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 650px; margin: 12vh auto; padding: 0 24px; line-height: 1.6; background: #faf9f6; color: #222; }
+    button { padding: 12px 20px; font-size: 1rem; cursor: pointer; border: 1px solid #555; border-radius: 6px; background: white; }
+    #poem { margin-top: 30px; font-size: 1.4rem; white-space: pre-line; }
+  </style>
+</head>
+<body>
+  <h1>Test Haiku</h1>
+  <p>A home for small experiments in chance and language.</p>
+  <button id="generate">Generate a test haiku</button>
+  <div id="poem" aria-live="polite"></div>
+  <script>
+    const poems = [
+      'Morning clouds gather\nThe calendar drinks its tea\nAn old headline fades',
+      'The quiet inbox\nHolds a hundred paper moons\nRain forgets its name',
+      'A train crosses dusk\nTomorrow waits in a jar\nBlue windows awake'
+    ];
+    document.getElementById('generate').addEventListener('click', () => {
+      document.getElementById('poem').textContent = poems[Math.floor(Math.random() * poems.length)];
+    });
+  </script>
+</body>
+</html>
