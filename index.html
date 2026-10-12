@@ -1,165 +1,1017 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>HighQ</title>
-<style>
-:root{color-scheme:light}*{box-sizing:border-box}
-body{margin:0;background:#f4f0f6;color:#30213e;font:17px/1.6 Georgia,serif}
-main{max-width:790px;margin:0 auto;padding:48px 22px 80px}
-header{text-align:center;border-bottom:1px solid #d9d0df;padding-bottom:25px}
-h1{font-weight:normal;letter-spacing:.09em;font-size:clamp(40px,7vw,68px);margin:0;color:#291b39}
-button{cursor:pointer;background:#49365e;color:#faf8fc;border:0;border-radius:4px;padding:13px 23px;font:600 15px system-ui,sans-serif}
-button:hover{background:#352545}button:disabled{opacity:.6;cursor:wait}
-.actions{text-align:center;margin:25px 0}
-.poem{background:#fbf9fc;border:1px solid #e5deea;text-align:center;padding:55px 20px;box-shadow:0 7px 30px #32243b0a}
-.poem p{font-size:clamp(23px,4vw,31px);line-height:1.75;margin:0;white-space:pre-line;color:#30213e}
-.sources{margin-top:42px}h2{font:600 14px system-ui,sans-serif;letter-spacing:.13em;text-transform:uppercase;border-bottom:1px solid #d9d0df;padding-bottom:10px;color:#49365e}
-ul{list-style:none;padding:0}li{padding:9px 0;border-bottom:1px solid #e8e1ec;font:14px/1.5 system-ui,sans-serif}
-a{color:#47315c;text-decoration:none}a:hover{text-decoration:underline}
-</style></head>
-<body><main><header><h1>HighQ</h1></header><div class="actions"><button id="generate">Make another haiku</button></div><section class="poem" aria-live="polite"><p id="haiku">A quiet page waits\nFor distant news and weather\nTo stir up the words</p></section><section class="sources"><h2>Today's ingredients</h2><ul id="ingredients"></ul></section></main>
-<script>
-'use strict';
-const feeds=[
- {name:'Reuters',url:'https://news.google.com/rss/search?q=site%3Areuters.com%20when%3A2d&hl=en-US&gl=US&ceid=US:en'},
- {name:'CBC',url:'https://www.cbc.ca/webfeed/rss/rss-topstories'},
- {name:'Ottawa Citizen',url:'https://ottawacitizen.com/feed/'},
- {name:'Google News',url:'https://news.google.com/rss?hl=en-CA&gl=CA&ceid=CA:en'},
- {name:'Washington Post',url:'https://feeds.washingtonpost.com/rss/world'},
- {name:'TSX market movers (news)',url:'https://news.google.com/rss/search?q=TSX%20top%20gainers%20stocks%20today%20when%3A2d&hl=en-CA&gl=CA&ceid=CA:en'}
-];
-const $=id=>document.getElementById(id);let ingredients=[];
-const random=a=>a[Math.floor(Math.random()*a.length)];
-function clean(s){const d=document.createElement('div');d.innerHTML=s||'';return(d.textContent||'').replace(/\s+/g,' ').trim().slice(0,160)}
-async function fetchWithTimeout(url,ms=11000){const c=new AbortController(),t=setTimeout(()=>c.abort(),ms);try{const r=await fetch(url,{signal:c.signal});if(!r.ok)throw Error('HTTP '+r.status);return await r.json()}finally{clearTimeout(t)}}
-async function news(feed){
- // Public relay: no credentials; subject to third-party availability.
- const relay='https://api.allorigins.win/raw?url='+encodeURIComponent(feed.url);
- const c=new AbortController(),t=setTimeout(()=>c.abort(),11000);
- try{const r=await fetch(relay,{signal:c.signal});if(!r.ok)throw Error('relay unavailable');const xml=new DOMParser().parseFromString(await r.text(),'text/xml');const items=[...xml.querySelectorAll('item')].slice(0,8);if(!items.length)throw Error('empty feed');const item=random(items);return {name:feed.name,title:clean(item.querySelector('title')?.textContent),link:item.querySelector('link')?.textContent||feed.url,ok:true}}
- catch(e){return{name:feed.name,title:'Headlines temporarily unavailable',link:feed.url,ok:false}}
- finally{clearTimeout(t)}
-}
-const weatherCode=c=>c===0?'clear skies':c<=3?'clouds and sun':c<=48?'mist and fog':c<=67?'rain':c<=77?'snow':c<=82?'rain showers':c<=86?'snow showers':'stormy skies';
-async function weather(name,lat,lon){try{const j=await fetchWithTimeout(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code&timezone=auto`);const w=j.current;return{name,title:`${Math.round(w.temperature_2m)}°C, ${weatherCode(w.weather_code)}`,ok:true,link:'https://open-meteo.com/en/docs'}}catch(e){return{name,title:'Weather temporarily unavailable',ok:false,link:'https://open-meteo.com/en/docs'}}}
-const literatureTopics=[
- ['Literature','Literature'],['Poetry','Poetry'],['Modernist literature','Modernist_literature'],
- ['Haiku','Haiku'],['Canadian literature','Canadian_literature'],['Romantic poetry','Romantic_poetry']
-];
-const artTopics=[
- ['Art history','Art_history'],['Renaissance art','Renaissance_art'],['Impressionism','Impressionism'],
- ['Electronic music','Electronic_music'],['Computer music','Computer_music'],['History of music','History_of_music'],
- ['Surrealism','Surrealism'],['Baroque music','Baroque_music']
-];
-const placeTopics=[
- ['Prague','Prague'],['History of Prince Edward Island','History_of_Prince_Edward_Island'],
- ['Prince Edward Island','Prince_Edward_Island'],['Ottawa','Ottawa'],
- ['Torrevieja','Torrevieja'],['Mexico City','Mexico_City'],
- ['Artech Studios','Artech_Digital_Entertainment'],['Burnstown','Burnstown,_Ontario']
-];
-const weatherPlaces=[
- ['Ottawa weather',45.4215,-75.6972],['Prague weather',50.0755,14.4378],
- ['Torrevieja weather',37.9787,-0.6822],['Mexico City weather',19.4326,-99.1332],
- ['Burnstown weather',45.39,-76.57]
-];
-async function wikipediaTopic(topic){const [name,page]=topic;const link='https://en.wikipedia.org/wiki/'+page;
- try{const j=await fetchWithTimeout('https://en.wikipedia.org/w/api.php?action=query&prop=extracts&exintro=1&explaintext=1&titles='+encodeURIComponent(page.replaceAll('_',' '))+'&format=json&origin=*');const p=Object.values(j.query.pages)[0];if(p.missing!==undefined)throw Error('missing');return{name:'Wikipedia · '+name,title:(p.extract||p.title).slice(0,180),link,ok:true}}
- catch(e){return{name:'Wikipedia · '+name,title:'Read the article',link,ok:false}}
-}
-async function wikipedia(){try{const j=await fetchWithTimeout('https://en.wikipedia.org/w/api.php?action=query&generator=random&grnnamespace=0&grnlimit=1&prop=info&inprop=url&format=json&origin=*');const p=Object.values(j.query.pages)[0];return{name:'Wikipedia · Random',title:p.title,link:p.fullurl,ok:true}}catch(e){return{name:'Wikipedia · Random',title:'Random article unavailable',link:'https://en.wikipedia.org/wiki/Special:Random',ok:false}}}
-// Source-aware, syllable-checked phrase banks: 5 / 7 / 5.
-// One line responds to weather, one to news, and one to a selected cultural/place article.
-const weatherLines={
- 'Ottawa weather':['Ottawa awakes','The river wakes up','Cold air on the bridge'],
- 'Prague weather':['Prague roofs greet the dawn','The old city wakes','Morning on the bridge'],
- 'Torrevieja weather':['Salt air fills the streets','The blue sea wakes up','Warm light on the shore'],
- 'Mexico City weather':['The high city wakes','Mountains hold the dawn','Sun above the streets'],
- 'Burnstown weather':['Fields wait for the sun','The old mill stands still','Mist hangs on the hills']
-};
-const newsLines={
- Reuters:['Far stories cross the oceans','The distant world is turning','New voices fill the morning'],
- CBC:['Across the wide Canadian sky','The country reads the morning','New stories cross the border'],
- 'Ottawa Citizen':['The town reads the morning news','The city hears the latest news','The river carries stories'],
- 'Google News':['A thousand stories cross the sky','The world unfolds another day','New voices crowd the morning'],
- 'Washington Post':['Across the halls of power','The papers carry distant news','The capital is listening'],
- 'TSX market movers (news)':['Markets rise and fall again','Trading floors awake at dawn','The numbers move like weather']
-};
-const culturalLines={
- literature:['Old poems bloom again','Words drift across time','A story takes root','The pages breathe softly'],
- art:['Brushstrokes hold the light','Old paintings still sing','A melody wakes','The colours take flight'],
- place:['Old streets keep their tales','The island remembers','A city dreams on','The past walks beside us']
-};
-let last='',turn=0;
-function pickDifferent(a){let v=random(a);for(let i=0;i<8&&v===last;i++)v=random(a);return v}
-function weatherLine(item){
- const lines=weatherLines[item.name]||['The morning unfolds'];
- const t=(item.title||'').toLowerCase();
- if(/snow/.test(t))return 'Snow settles softly';
- if(/rain|showers/.test(t))return 'Rain taps on the roofs';
- if(/clear skies/.test(t))return 'Clear skies greet the dawn';
- if(/mist|fog/.test(t))return 'Mist covers the hills';
- return random(lines);
-}
-function newsLine(item){
- const t=(item.title||'').toLowerCase();
- if(/market|stocks|tsx|shares/.test(t))return 'Markets rise and fall again';
- if(/election|vote|politic/.test(t))return 'Ballots carry hopes and fears';
- if(/war|conflict|military/.test(t))return 'The world holds its breath again';
- if(/climate|heat|storm/.test(t))return 'Changing skies make headlines now';
- return random(newsLines[item.name]||newsLines['Google News']);
-}
-function culturalLine(item,kind){
- const t=((item.name||'')+' '+(item.title||'')).toLowerCase();
- if(kind==='literature'){
-  if(/poetry|poem|haiku/.test(t))return 'Old poems bloom again';
-  if(/novel|literature|fiction/.test(t))return 'A story takes root';
- }
- if(kind==='art'){
-  if(/music|sound|electronic/.test(t))return 'A melody wakes';
-  if(/paint|impression|renaissance|art/.test(t))return 'Old paintings still sing';
- }
- if(kind==='place'){
-  if(/island|prince edward/.test(t))return 'The island remembers';
-  if(/prague|praha|city|ottawa/.test(t))return 'A city dreams on';
- }
- return random(culturalLines[kind]);
-}
-function generate(){
- const [w,n,l,a,p]=ingredients;
- if(!w||!n||!l||!a||!p)return;
- const kind=['literature','art','place'][turn++%3];
- const third={literature:l,art:a,place:p}[kind];
- // Every poem combines at least three selected source categories.
- let lines=[weatherLine(w),newsLine(n),culturalLine(third,kind)];
- for(let i=0;i<5&&lines.join('|')===last;i++){
-  lines=[weatherLine(w),newsLine(n),culturalLine(third,kind)];
- }
- last=lines.join('|');
- $('haiku').textContent=lines.join('\n');
- 
-}
-function render(){
- const ul=$('ingredients');ul.replaceChildren();
- [...ingredients].sort(()=>Math.random()-0.5).forEach(x=>{
-  const li=document.createElement('li'),a=document.createElement('a');
-  a.textContent=x.name.startsWith('Wikipedia · ') ? x.name.slice(12) : (x.name.endsWith('weather') ? x.name.replace(' weather','')+' weather' : (x.ok && x.title && x.name !== 'TSX market movers (news)' ? x.title : x.name));
-  a.href=x.link;a.target='_blank';a.rel='noopener noreferrer';
-  li.append(a);ul.append(li);
- });
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>HighQ</title>
+    <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+    <main>
+        <header>
+            <h1>HighQ</h1>
+        </header>
 
- generate();$('generate').disabled=false;
-}
-async function refresh(){
- $('generate').disabled=true;
+        <div class="actions">
+            <button id="generate">Make another Moment</button>
+            <p id="runStatus" class="run-status">idle</p>
+            <p id="backendStatus" class="backend-status">checking backend...</p>
+        </div>
 
- try{
-  ingredients=await Promise.all([
-   weather(...random(weatherPlaces)),news(random(feeds)),
-   wikipediaTopic(random(literatureTopics)),
-   wikipediaTopic(random(artTopics)),
-   wikipediaTopic(random(placeTopics))
-  ]);
-  render();
- }catch(e){$('generate').disabled=false;generate()}
-}
-$('generate').addEventListener('click',refresh);
-refresh();
-</script></body></html>
+        <section class="workspace" aria-label="Found lines and preview">
+            <section class="preview-panel">
+                <h2>Source preview</h2>
+                <p id="previewStatus" class="preview-status">click a found line to preview its source page here.</p>
+                <iframe id="previewFrame" title="Source page preview" loading="lazy"></iframe>
+                <p class="preview-fallback">if the preview is blank, that site blocks embedding. <a id="openExternal" href="#" target="_blank" rel="noopener noreferrer">open source in new tab</a></p>
+            </section>
+
+            <section class="right-panel">
+                <section class="poem" aria-live="polite">
+                    <p id="haiku">A quiet thought
+                    </p>
+                    <div class="tts-controls" aria-label="Poem reader controls">
+                        <button id="readPoem" type="button">Read poem</button>
+                        <button id="pausePoem" type="button" disabled>Pause</button>
+                        <button id="stopPoem" type="button" disabled>Stop</button>
+                    </div>
+                    <p id="ttsStatus" class="tts-status">reader idle</p>
+                </section>
+            </section>
+        </section>
+
+        <section class="export" aria-label="Send to ChatGPT">
+            <h2>Send to ChatGPT</h2>
+            <p class="backend-note">GitHub Pages static mode: the page still finds lines and builds the prompt bundle. AI rewrite works only via a browser key or a hosted backend.</p>
+            <div class="export-options">
+                <label class="check-row" for="autoRewrite">
+                    <input id="autoRewrite" type="checkbox" checked>
+                    auto-send after 10 lines are found
+                </label>
+            </div>
+            <div class="export-actions">
+                <button id="openChatgpt" type="button">Open in ChatGPT</button>
+                <button id="copyBundle" type="button">Copy Prompt Bundle</button>
+                <button id="runRewrite" type="button">Rewrite In HighQ</button>
+            </div>
+            <p id="exportStatus" class="export-status"></p>
+        </section>
+
+        <section class="ai-output">
+            <h2>Model response</h2>
+            <pre id="aiOutput">response will appear here after rewrite runs.</pre>
+        </section>
+    </main>
+
+    <script src="./sources.js"></script>
+    <script>
+        'use strict';
+
+        // Load source pools from the dedicated source file.
+        const {
+            feeds,
+            bookFeeds = [],
+            literatureTopics,
+            artTopics,
+            placeTopics,
+            weatherPlaces
+        } = window.SOURCES;
+
+        const topicGroups = [literatureTopics, artTopics, placeTopics];
+        const FIXED_PROMPT = 'Take these 10 random lines of text and build a found poem from exact snippets of those lines. The output should feel grammatical but wandering, like someone trying to stay on topic and slipping away. Style should loosely echo e. e. cummings (line breaks, cadence, lowercase bias), with no forced rhyme. Return ONLY the poem text. Do not add explanation, preface, numbering, markdown fences, or labels.';
+
+        const $ = id => document.getElementById(id);
+        let lastSelectionKey = '';
+        let lastPoem = '';
+        let busyTimer = null;
+        let busyTick = 0;
+        let rewriteInFlight = false;
+        const generateButtonLabel = 'Make another Moment';
+        let progressPhase = 'idle';
+        let progressLines = 0;
+        let progressStartedAt = 0;
+        const SOURCE_TIMEOUT_MS = 4500;
+        const speechSupported = 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window;
+        let ttsReading = false;
+        let ttsPaused = false;
+        let ttsCurrentLine = -1;
+        let ttsCurrentUtterance = null;
+
+        const random = a => a[Math.floor(Math.random() * a.length)];
+
+        function setProgress(phase, linesCount = progressLines) {
+            progressPhase = phase;
+            progressLines = linesCount;
+        }
+
+        function setTtsStatus(message) {
+            $('ttsStatus').textContent = message;
+        }
+
+        function clearActiveLine() {
+            document.querySelectorAll('#haiku .poem-link.active').forEach(n => n.classList.remove('active'));
+        }
+
+        function setActiveLine(index) {
+            clearActiveLine();
+            const nodes = [...document.querySelectorAll('#haiku .poem-link')];
+            if (index >= 0 && index < nodes.length) {
+                nodes[index].classList.add('active');
+            }
+        }
+
+        function updateTtsButtons() {
+            const hasPoem = currentModelPoemLines().length > 0;
+            $('readPoem').disabled = !speechSupported || ttsReading || !hasPoem;
+            $('pausePoem').disabled = !speechSupported || !ttsReading;
+            $('stopPoem').disabled = !speechSupported || !ttsReading;
+            $('pausePoem').textContent = ttsPaused ? 'Resume' : 'Pause';
+        }
+
+        function stopPoemReading(statusMessage = 'reader stopped') {
+            if (speechSupported) {
+                window.speechSynthesis.cancel();
+            }
+            ttsReading = false;
+            ttsPaused = false;
+            ttsCurrentLine = -1;
+            ttsCurrentUtterance = null;
+            clearActiveLine();
+            setTtsStatus(statusMessage);
+            updateTtsButtons();
+        }
+
+        function getPreferredVoice() {
+            const voices = window.speechSynthesis.getVoices();
+            if (!voices.length) {
+                return null;
+            }
+
+            const preferred = voices.find(voice => {
+                const name = (voice.name || '').toLowerCase();
+                const lang = (voice.lang || '').toLowerCase();
+                return (name.includes('female') || name.includes('woman') || name.includes('samantha') || name.includes('zira') || name.includes('aria'))
+                    && (lang.includes('en') || lang.includes('us') || lang.includes('uk'));
+            });
+
+            return preferred || voices.find(voice => /en|us|uk/i.test(voice.lang || '')) || voices[0] || null;
+        }
+
+        function speakLine(lines, index) {
+            if (!ttsReading) {
+                return;
+            }
+
+            if (index >= lines.length) {
+                stopPoemReading('reader complete');
+                return;
+            }
+
+            ttsCurrentLine = index;
+            setTtsStatus(`reading line ${index + 1}/${lines.length}`);
+
+            const utter = new SpeechSynthesisUtterance(lines[index]);
+            const preferredVoice = getPreferredVoice();
+            utter.voice = preferredVoice;
+            utter.rate = 0.9;
+            utter.pitch = 1.2;
+            utter.volume = 1;
+            utter.lang = preferredVoice ? preferredVoice.lang : 'en-US';
+            utter.onend = () => {
+                if (!ttsReading || ttsPaused) {
+                    return;
+                }
+                speakLine(lines, index + 1);
+            };
+            utter.onerror = () => {
+                stopPoemReading('reader failed on this browser/voice');
+            };
+
+            ttsCurrentUtterance = utter;
+            window.speechSynthesis.speak(utter);
+        }
+
+        function startPoemReading() {
+            if (!speechSupported) {
+                setTtsStatus('speech synthesis not supported in this browser');
+                return;
+            }
+
+            const lines = currentModelPoemLines();
+            if (!lines.length) {
+                setTtsStatus('no model response to read yet');
+                return;
+            }
+
+            stopPoemReading('starting reader...');
+            ttsReading = true;
+            ttsPaused = false;
+            updateTtsButtons();
+            speakLine(lines, 0);
+        }
+
+        function togglePoemPause() {
+            if (!speechSupported || !ttsReading) {
+                return;
+            }
+
+            if (!ttsPaused) {
+                window.speechSynthesis.pause();
+                ttsPaused = true;
+                setTtsStatus(`paused at line ${ttsCurrentLine + 1}`);
+            } else {
+                window.speechSynthesis.resume();
+                ttsPaused = false;
+                setTtsStatus(`reading line ${ttsCurrentLine + 1}`);
+            }
+
+            updateTtsButtons();
+        }
+
+        function startBusy() {
+            const btn = $('generate');
+            btn.disabled = true;
+            btn.style.opacity = '1';
+            busyTick = 0;
+            progressStartedAt = Date.now();
+            setProgress('finding lines', 0);
+
+            if (busyTimer) {
+                clearInterval(busyTimer);
+            }
+
+            busyTimer = setInterval(() => {
+                busyTick++;
+                btn.style.opacity = busyTick % 2 ? '0.45' : '1';
+                const secs = Math.floor((Date.now() - progressStartedAt) / 1000);
+                const phaseLabel = progressPhase === 'rewriting' ? 'rewriting' : 'finding';
+                btn.textContent = `${phaseLabel} ${progressLines}/10 · ${secs}s`;
+            }, 220);
+        }
+
+        function stopBusy() {
+            const btn = $('generate');
+            if (busyTimer) {
+                clearInterval(busyTimer);
+                busyTimer = null;
+            }
+            btn.style.opacity = '1';
+            btn.disabled = false;
+            btn.textContent = generateButtonLabel;
+            setProgress('idle', 0);
+        }
+
+        function sampleWithoutReplacement(arr, count) {
+            const copy = [...arr];
+            const out = [];
+            const limit = Math.min(count, copy.length);
+
+            for (let i = 0; i < limit; i++) {
+                const idx = Math.floor(Math.random() * copy.length);
+                out.push(copy[idx]);
+                copy.splice(idx, 1);
+            }
+
+            return out;
+        }
+
+        function clean(s) {
+            const d = document.createElement('div');
+            d.innerHTML = s || '';
+            return (d.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 900);
+        }
+
+        function trimAtWordBoundary(text, maxChars) {
+            if (text.length <= maxChars) {
+                return text.trim();
+            }
+
+            const slice = text.slice(0, maxChars + 1);
+            const lastSpace = slice.lastIndexOf(' ');
+            if (lastSpace > 0) {
+                return slice.slice(0, lastSpace).trim();
+            }
+
+            return text.slice(0, maxChars).trim();
+        }
+
+        function dedupeTitleAndDescription(titleText, descriptionText) {
+            const title = clean(titleText || '');
+            const description = clean(descriptionText || '');
+
+            if (!title && !description) {
+                return '';
+            }
+
+            if (!description) {
+                return title;
+            }
+
+            const t = title.toLowerCase();
+            const d = description.toLowerCase();
+
+            if (d.includes(t)) {
+                return description;
+            }
+
+            if (t.includes(d)) {
+                return title;
+            }
+
+            // Prefer the title as the primary found line; use description only when title is very short.
+            if (title.length >= 40) {
+                return title;
+            }
+
+            return clean(`${title}. ${description}`);
+        }
+
+        function looksListLike(text) {
+            const t = text.toLowerCase();
+            const commaCount = (text.match(/,/g) || []).length;
+            if (/may refer to|can refer to|disambiguation/.test(t)) {
+                return true;
+            }
+            if (commaCount >= 5 && !/[.!?]/.test(text)) {
+                return true;
+            }
+            if (/\ba\b[^.!?]{0,40},\s*a\b[^.!?]{0,40},\s*a\b/.test(t)) {
+                return true;
+            }
+            return false;
+        }
+
+        // Shared JSON fetch helper with timeout.
+        async function fetchWithTimeout(url, ms = SOURCE_TIMEOUT_MS) {
+            const c = new AbortController();
+            const t = setTimeout(() => c.abort(), ms);
+
+            try {
+                const r = await fetch(url, {signal: c.signal});
+                if (!r.ok) {
+                    throw Error('HTTP ' + r.status);
+                }
+                return await r.json();
+            } finally {
+                clearTimeout(t);
+            }
+        }
+
+        async function fetchTextThroughRelays(url, ms = SOURCE_TIMEOUT_MS) {
+            // Public relays: no credentials; subject to third-party availability.
+            const relays = [
+                'https://api.allorigins.win/raw?url=' + encodeURIComponent(url),
+                'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(url)
+            ];
+            const c = new AbortController();
+            const t = setTimeout(() => c.abort(), ms);
+
+            try {
+                const attempts = relays.map(async relay => {
+                    const r = await fetch(relay, {signal: c.signal});
+                    if (!r.ok) {
+                        throw Error(`relay failed (${r.status})`);
+                    }
+                    return await r.text();
+                });
+
+                return await Promise.any(attempts);
+            } finally {
+                clearTimeout(t);
+            }
+        }
+
+        async function rssSource(source, kind) {
+            try {
+                const raw = await fetchTextThroughRelays(source.url);
+                const xml = new DOMParser().parseFromString(raw, 'text/xml');
+                const items = [...xml.querySelectorAll('item')].slice(0, 10);
+                if (!items.length) {
+                    throw Error('empty feed');
+                }
+
+                const item = random(items);
+                const titleText = item.querySelector('title')?.textContent || '';
+                const descriptionText = item.querySelector('description')?.textContent || '';
+                return {
+                    name: source.name,
+                    title: dedupeTitleAndDescription(titleText, descriptionText),
+                    link: item.querySelector('link')?.textContent || source.url,
+                    ok: true,
+                    kind
+                };
+            } catch (e) {
+                return {
+                    name: source.name,
+                    title: '',
+                    link: source.url,
+                    ok: false,
+                    kind
+                };
+            }
+        }
+
+        const weatherCode = c => (
+            c === 0 ? 'clear skies'
+            : c <= 3 ? 'clouds and sun'
+            : c <= 48 ? 'mist and fog'
+            : c <= 67 ? 'rain'
+            : c <= 77 ? 'snow'
+            : c <= 82 ? 'rain showers'
+            : c <= 86 ? 'snow showers'
+            : 'stormy skies'
+        );
+
+        // Pull current weather for one selected place.
+        async function weather(name, lat, lon) {
+            try {
+                const j = await fetchWithTimeout(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code&timezone=auto`);
+                const w = j.current;
+                return {
+                    name,
+                    title: `${Math.round(w.temperature_2m)}°C, ${weatherCode(w.weather_code)}`,
+                    ok: true,
+                    link: `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code&timezone=auto`,
+                    kind: 'weather'
+                };
+            } catch (e) {
+                return {
+                    name,
+                    title: '',
+                    ok: false,
+                    link: 'https://open-meteo.com/en/docs',
+                    kind: 'weather'
+                };
+            }
+        }
+
+        // Pull pages related to a chosen Wikipedia topic.
+        async function wikipediaRelated(topic) {
+            const [name, page] = topic;
+            const seed = page.replaceAll('_', ' ');
+
+            try {
+                const search = await fetchWithTimeout(
+                    'https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch='
+                    + encodeURIComponent(seed)
+                    + '&srlimit=5&format=json&origin=*'
+                );
+                const hits = (search.query?.search || []).slice(0, 5);
+                if (!hits.length) {
+                    throw Error('no related pages');
+                }
+                const hit = random(hits);
+                const title = hit.title;
+                const link = 'https://en.wikipedia.org/wiki/' + encodeURIComponent(title.replace(/\s+/g, '_'));
+
+                const rawText = clean(hit.snippet || title);
+                const sentences = (rawText.match(/[^.!?;:]+[.!?;:]?/g) || [])
+                    .map(s => s.trim())
+                    .filter(Boolean);
+
+                const sentence = sentences.find(s => s.length >= 30 && !looksListLike(s)) || '';
+                const snippet = sentence || rawText;
+                if (!snippet || looksListLike(snippet)) {
+                    throw Error('list-like wiki text');
+                }
+
+                return {
+                    name: 'Wikipedia · ' + title,
+                    title: snippet,
+                    link,
+                    ok: true,
+                    kind: 'wiki'
+                };
+            } catch (e) {
+                return {
+                    name: 'Wikipedia · ' + name,
+                    title: '',
+                    link: 'https://en.wikipedia.org/wiki/' + page,
+                    ok: false,
+                    kind: 'wiki'
+                };
+            }
+        }
+
+        function syllables(word) {
+            const w = word.toLowerCase().replace(/[^a-z]/g, '');
+            if (!w) {
+                return 0;
+            }
+            if (w.length <= 3) {
+                return 1;
+            }
+
+            const trimmed = w
+                .replace(/(?:[^laeiouy]es|ed|[^laeiouy]e)$/i, '')
+                .replace(/^y/i, '');
+
+            const groups = trimmed.match(/[aeiouy]{1,2}/gi);
+            return Math.max(1, groups ? groups.length : 1);
+        }
+        function chunkFromText(text, minChars = 80, maxChars = 360) {
+            const normalized = clean(text);
+            if (normalized.length < minChars) {
+                return '';
+            }
+
+            const sentences = (normalized.match(/[^.!?;:]+[.!?;:]?/g) || [])
+                .map(s => s.trim())
+                .filter(Boolean);
+
+            // First choice: whole sentence that already reads like a complete thought.
+            const completeCandidates = sentences
+                .filter(s => s.length >= minChars)
+                .map(s => trimAtWordBoundary(s, maxChars))
+                .filter(s => !looksListLike(s))
+                .filter(s => s.length >= minChars);
+
+            if (completeCandidates.length) {
+                return random(completeCandidates).toLowerCase();
+            }
+
+            // Fallback: extract a longer segment and cut at sentence punctuation when possible.
+            const source = normalized;
+            if (source.length < minChars) {
+                return '';
+            }
+
+            for (let attempt = 0; attempt < 20; attempt++) {
+                const maxStart = Math.max(0, source.length - minChars);
+                const start = Math.floor(Math.random() * (maxStart + 1));
+                const window = source.slice(start, start + maxChars);
+                if (window.length < minChars) {
+                    continue;
+                }
+
+                const punctAt = window.slice(minChars - 1).search(/[.!?;:]/);
+                if (punctAt >= 0) {
+                    const end = minChars - 1 + punctAt + 1;
+                    const candidate = window.slice(0, end).trim();
+                    if (candidate.length >= minChars) {
+                        return candidate.toLowerCase();
+                    }
+                }
+
+                const spaceAt = window.lastIndexOf(' ');
+                const candidate = (spaceAt > minChars ? window.slice(0, spaceAt) : window).trim();
+                if (candidate.length >= minChars) {
+                    return candidate.toLowerCase();
+                }
+            }
+
+            const fallback = source.slice(0, maxChars).trim();
+            return fallback.length >= minChars ? fallback : '';
+        }
+
+        function uniquePastelColor(usedColors) {
+            for (let i = 0; i < 80; i++) {
+                const hue = Math.floor(Math.random() * 360);
+                const sat = 60 + Math.floor(Math.random() * 20);
+                const light = 84 + Math.floor(Math.random() * 10);
+                const color = `hsl(${hue} ${sat}% ${light}%)`;
+                if (!usedColors.has(color)) {
+                    return color;
+                }
+            }
+
+            const fallback = `hsl(${(usedColors.size * 37) % 360} 70% 88%)`;
+            return fallback;
+        }
+
+        let previewTimer = null;
+
+        function loadPreview(url) {
+            const frame = $('previewFrame');
+            const status = $('previewStatus');
+            const open = $('openExternal');
+
+            open.href = url;
+            status.textContent = 'loading source page...';
+            frame.src = url;
+
+            if (previewTimer) {
+                clearTimeout(previewTimer);
+            }
+
+            previewTimer = setTimeout(() => {
+                status.textContent = 'if this stays blank, the site blocks embedding. use open source in new tab.';
+            }, 5000);
+        }
+
+        function renderPoemLines(lineEntries) {
+            const poem = $('haiku');
+            poem.replaceChildren();
+
+            lineEntries.forEach(entry => {
+                const line = document.createElement('a');
+                line.className = 'poem-line poem-link';
+                line.textContent = entry.text;
+                line.style.backgroundColor = entry.color;
+                line.style.color = '#000';
+                line.href = entry.url;
+                line.target = '_blank';
+                line.rel = 'noopener noreferrer';
+                line.addEventListener('click', event => {
+                    event.preventDefault();
+                    loadPreview(entry.url);
+                });
+                poem.append(line);
+            });
+
+            updateTtsButtons();
+        }
+
+        async function randomSourceItem(allowWeather = true) {
+            const kinds = allowWeather
+                ? ['news', 'books', 'weather', 'wiki']
+                : ['news', 'books', 'wiki'];
+            const kind = random(kinds);
+
+            if (kind === 'news' && feeds.length) {
+                return await rssSource(random(feeds), 'news');
+            }
+
+            if (kind === 'books') {
+                const pool = bookFeeds.length ? bookFeeds : feeds;
+                if (pool.length) {
+                    return await rssSource(random(pool), 'books');
+                }
+            }
+
+            if (kind === 'weather' && weatherPlaces.length) {
+                return await weather(...random(weatherPlaces));
+            }
+
+            const group = random(topicGroups);
+            if (group && group.length) {
+                return await wikipediaRelated(random(group));
+            }
+
+            return {ok: false, title: '', name: 'source unavailable', link: '#', kind};
+        }
+
+        function currentFoundLines() {
+            const lineNodes = [...document.querySelectorAll('#haiku .poem-line')];
+            if (lineNodes.length) {
+                return lineNodes.map(n => n.textContent.trim()).filter(Boolean);
+            }
+
+            return ($('haiku').textContent || '')
+                .split('\n')
+                .map(s => s.trim())
+                .filter(Boolean)
+                .filter(s => !/^searching for lines/i.test(s))
+                .filter(s => !/^no lines found/i.test(s));
+        }
+
+        function extractPoemFromModelText(rawText) {
+            let text = (rawText || '').replace(/\r/g, '').trim();
+            if (!text) {
+                return '';
+            }
+
+            const fenced = text.match(/```(?:\w+)?\n([\s\S]*?)```/);
+            if (fenced && fenced[1]) {
+                text = fenced[1].trim();
+            }
+
+            const markerPatterns = [
+                /(?:^|\n)found\s+poem\s*:\s*/i,
+                /(?:^|\n)poem\s*:\s*/i,
+                /(?:^|\n)final\s+poem\s*:\s*/i,
+                /(?:^|\n)here(?:'|’)s\s+the\s+poem\s*:\s*/i,
+                /(?:^|\n)here\s+is\s+the\s+poem\s*:\s*/i
+            ];
+
+            markerPatterns.forEach(pattern => {
+                const m = text.match(pattern);
+                if (m && typeof m.index === 'number') {
+                    text = text.slice(m.index + m[0].length).trim();
+                }
+            });
+
+            const lines = text.split('\n').map(line => line.trim());
+            const isMetaLine = line => {
+                if (!line) {
+                    return true;
+                }
+
+                if (/^(certainly|sure|first\b|second\b|third\b|i\s*(?:'|’)ll|i\s+will|let\s*(?:'|’)s|here(?:'|’)s|here\s+is)\b/i.test(line)) {
+                    return true;
+                }
+
+                if (/(parse|craft|rework|found poem in the style|semantically loose|grammatically coherent)/i.test(line)) {
+                    return true;
+                }
+
+                return false;
+            };
+
+            let start = 0;
+            while (start < lines.length && isMetaLine(lines[start])) {
+                start += 1;
+            }
+
+            return lines.slice(start).join('\n').trim();
+        }
+
+        function currentModelPoemLines() {
+            const text = extractPoemFromModelText(($('aiOutput').textContent || '').trim());
+            if (!text) {
+                return [];
+            }
+
+            if (/^response will appear here/i.test(text) || /^waiting for model response/i.test(text) || /^could not get model response/i.test(text)) {
+                return [];
+            }
+
+            return text
+                .split('\n')
+                .map(s => s.trim())
+                .filter(Boolean);
+        }
+
+        function buildPromptBundle() {
+            const prompt = FIXED_PROMPT;
+            const lines = currentFoundLines();
+            const sections = [];
+
+            if (prompt) {
+                sections.push(prompt);
+            }
+
+            sections.push('found lines:');
+            sections.push(lines.map((line, idx) => `${idx + 1}. ${line}`).join('\n'));
+
+            return {lines, text: sections.join('\n\n')};
+        }
+
+        function setExportStatus(message) {
+            $('exportStatus').textContent = message;
+            $('runStatus').textContent = message;
+        }
+
+        async function checkBackendHealth() {
+            $('backendStatus').textContent = 'checking backend...';
+
+            try {
+                const r = await fetch('/api/health', {cache: 'no-store'});
+                if (!r.ok) {
+                    throw Error(`health check failed (${r.status})`);
+                }
+
+                const health = await r.json();
+                if (health.ok && health.hasKey) {
+                    $('backendStatus').textContent = 'backend connected · api key detected';
+                } else if (health.ok && !health.hasKey) {
+                    $('backendStatus').textContent = 'backend connected · api key missing in .env';
+                } else {
+                    $('backendStatus').textContent = 'backend reachable but health check is invalid';
+                }
+            } catch (e) {
+                const staticMessage = 'static GitHub Pages mode · backend unavailable, prompt bundle still works';
+                $('backendStatus').textContent = staticMessage;
+                $('runRewrite').disabled = false;
+            }
+        }
+
+        function setAiOutput(message) {
+            const cleaned = extractPoemFromModelText(message);
+            $('aiOutput').textContent = cleaned || message;
+            updateTtsButtons();
+        }
+
+        async function rewriteInHighQ(linesOverride) {
+            if (rewriteInFlight) {
+                setExportStatus('rewrite already running...');
+                return;
+            }
+
+            const lines = linesOverride || currentFoundLines();
+            if (!lines.length) {
+                setExportStatus('no lines yet. generate a poem first.');
+                return;
+            }
+
+            const prompt = FIXED_PROMPT;
+            const browserKey = localStorage.getItem('highq_openai_key') || localStorage.getItem('openai_api_key');
+
+            rewriteInFlight = true;
+            $('runRewrite').disabled = true;
+            setProgress('rewriting', lines.length);
+            setExportStatus('sending lines to model... this may take 5-20 seconds.');
+            setAiOutput('waiting for model response...');
+
+            try {
+                let text = '';
+                const backendAvailable = await fetch('/api/health', {cache: 'no-store'}).then(r => r.ok).catch(() => false);
+
+                if (backendAvailable) {
+                    const response = await fetch('/api/rewrite', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            prompt,
+                            lines
+                        })
+                    });
+
+                    if (!response.ok) {
+                        const errText = await response.text();
+                        throw Error(`request failed (${response.status}): ${errText.slice(0, 240)}`);
+                    }
+
+                    const payload = await response.json();
+                    text = (payload.text || '').trim();
+                } else if (browserKey) {
+                    const response = await fetch('https://api.openai.com/v1/responses', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${browserKey}`
+                        },
+                        body: JSON.stringify({
+                            model: 'gpt-4o-mini',
+                            input: [
+                                {role: 'system', content: prompt},
+                                {role: 'user', content: lines.map((line, index) => `${index + 1}. ${line}`).join('\n')}
+                            ]
+                        })
+                    });
+
+                    if (!response.ok) {
+                        const errText = await response.text();
+                        throw Error(`OpenAI request failed (${response.status}): ${errText.slice(0, 240)}`);
+                    }
+
+                    const payload = await response.json();
+                    text = (payload.output_text || payload.output?.map(item => item.content || []).flat().map(c => c.text || '').join('\n') || '').trim();
+                } else {
+                    throw Error('static GitHub Pages build has no backend. use the prompt bundle in ChatGPT or set a browser key in localStorage as highq_openai_key.');
+                }
+
+                if (!text) {
+                    throw Error('model returned no text output');
+                }
+
+                setAiOutput(text);
+                setExportStatus('rewrite complete.');
+                setTtsStatus('rewrite ready. click read poem.');
+            } catch (e) {
+                setAiOutput('could not get model response.');
+                setExportStatus(`rewrite failed: ${e.message}`);
+                setTtsStatus('reader idle');
+            } finally {
+                rewriteInFlight = false;
+                $('runRewrite').disabled = false;
+            }
+        }
+
+        async function copyPromptBundle() {
+            const {lines, text} = buildPromptBundle();
+            if (!lines.length) {
+                setExportStatus('no lines yet. generate a poem first.');
+                return;
+            }
+
+            try {
+                await navigator.clipboard.writeText(text);
+                setExportStatus('prompt bundle copied to clipboard.');
+            } catch (e) {
+                setExportStatus('could not copy automatically.');
+            }
+        }
+
+        function openInChatGpt() {
+            const {lines, text} = buildPromptBundle();
+            if (!lines.length) {
+                setExportStatus('no lines yet. generate a poem first.');
+                return;
+            }
+
+            const encoded = encodeURIComponent(text);
+            // Keep URL within a conservative length. If too long, ask user to use copy flow.
+            if (encoded.length > 3500) {
+                setExportStatus('bundle is too long for direct URL. use copy prompt bundle.');
+                return;
+            }
+
+            window.open('https://chatgpt.com/?q=' + encoded, '_blank', 'noopener,noreferrer');
+            setExportStatus('opened ChatGPT with your prompt bundle.');
+        }
+
+        // Build 10 lines by repeatedly pulling random sources and slicing random text chunks.
+        async function refresh() {
+            if (ttsReading) {
+                stopPoemReading('reader stopped: new lines incoming');
+            }
+
+            startBusy();
+
+            try {
+                const lines = [];
+                const usedUrls = new Set();
+                const usedColors = new Set();
+                let weatherUsed = false;
+
+                $('haiku').textContent = 'searching for lines...';
+                setExportStatus('finding source lines...');
+
+                for (let round = 0; round < 30 && lines.length < 10; round++) {
+                    const batchSize = Math.min(8, 10 - lines.length + 3);
+                    const batch = Array.from({length: batchSize}, () => randomSourceItem(!weatherUsed));
+                    const items = await Promise.all(batch);
+
+                    for (const item of items) {
+                        if (lines.length >= 10) {
+                            break;
+                        }
+
+                        if (!item || !item.ok || !item.title) {
+                            continue;
+                        }
+
+                        if (item.kind === 'weather' && weatherUsed) {
+                            continue;
+                        }
+
+                        const urlKey = (item.link || '').trim().toLowerCase();
+                        if (!urlKey || usedUrls.has(urlKey)) {
+                            continue;
+                        }
+
+                        const line = chunkFromText(item.title, 60, 320);
+                        if (!line) {
+                            continue;
+                        }
+
+                        const color = uniquePastelColor(usedColors);
+                        lines.push({text: line, color, url: item.link});
+                        usedUrls.add(urlKey);
+                        usedColors.add(color);
+                        setProgress('finding lines', lines.length);
+                        setExportStatus(`found ${lines.length}/10 lines...`);
+                        renderPoemLines(lines);
+
+                        if (lines.length === 1) {
+                            loadPreview(item.link);
+                        }
+
+                        if (item.kind === 'weather') {
+                            weatherUsed = true;
+                        }
+                    }
+                }
+
+                if (lines.length === 10) {
+                    lastPoem = lines.map(x => x.text).join('|');
+                    renderPoemLines(lines);
+                    setExportStatus('10/10 lines found.');
+
+                    if ($('autoRewrite').checked) {
+                        setTtsStatus('waiting for rewrite output...');
+                        await rewriteInHighQ(lines.map(x => x.text));
+                    } else {
+                        setExportStatus('10/10 lines found. auto rewrite is off.');
+                        setTtsStatus('click Rewrite In HighQ to enable reader text.');
+                    }
+                } else {
+                    $('haiku').textContent = 'no lines found this round\ntry again for a fresh pull';
+                    setExportStatus('line search ended without 10 lines.');
+                    setTtsStatus('reader idle');
+                }
+            } catch (e) {
+                $('haiku').textContent = 'no lines found this round\ntry again for a fresh pull';
+                setExportStatus(`run failed: ${e.message}`);
+                setTtsStatus('reader idle');
+            } finally {
+                stopBusy();
+            }
+        }
+
+        $('generate').addEventListener('click', refresh);
+        $('openChatgpt').addEventListener('click', openInChatGpt);
+        $('copyBundle').addEventListener('click', copyPromptBundle);
+        $('runRewrite').addEventListener('click', () => {
+            rewriteInHighQ();
+        });
+        $('readPoem').addEventListener('click', startPoemReading);
+        $('pausePoem').addEventListener('click', togglePoemPause);
+        $('stopPoem').addEventListener('click', () => {
+            stopPoemReading('reader stopped');
+        });
+        $('previewFrame').addEventListener('load', () => {
+            $('previewStatus').textContent = 'preview loaded. if this looks blank, use open source in new tab.';
+        });
+        checkBackendHealth();
+        if (!speechSupported) {
+            setTtsStatus('speech synthesis not supported in this browser');
+        }
+        updateTtsButtons();
+        refresh();
+    </script>
+</body>
+</html>
