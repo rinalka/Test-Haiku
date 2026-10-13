@@ -40,28 +40,6 @@
             </section>
         </section>
 
-        <section class="export" aria-label="Send to ChatGPT">
-            <h2>Send to ChatGPT</h2>
-            <p class="backend-note">GitHub Pages static mode: the page still finds lines and builds the prompt bundle. AI rewrite works only via a browser key or a hosted backend.</p>
-            <div class="export-options">
-                <label class="check-row" for="autoRewrite">
-                    <input id="autoRewrite" type="checkbox" checked>
-                    auto-send after 10 lines are found
-                </label>
-            </div>
-            <div class="export-actions">
-                <button id="openChatgpt" type="button">Open in ChatGPT</button>
-                <button id="copyBundle" type="button">Copy Prompt Bundle</button>
-                <button id="runRewrite" type="button">Rewrite In HighQ</button>
-            </div>
-            <p id="exportStatus" class="export-status"></p>
-        </section>
-
-        <section class="ai-output">
-            <h2>Found lines</h2>
-            <pre id="foundLinesText">found lines will appear here as plain text.</pre>
-        </section>
-
         <section class="ai-output">
             <h2>Model response</h2>
             <pre id="aiOutput">response will appear here after rewrite runs.</pre>
@@ -184,17 +162,51 @@ Output only the poem, with no title, introduction, commentary, or explanation.`;
                 return null;
             }
 
-            const preferred = voices.find(voice => {
+            const isFemaleEnglish = voice => {
                 const name = (voice.name || '').toLowerCase();
                 const lang = (voice.lang || '').toLowerCase();
                 return (name.includes('female') || name.includes('woman') || name.includes('samantha') || name.includes('zira') || name.includes('aria'))
                     && (lang.includes('en') || lang.includes('us') || lang.includes('uk'));
-            });
+            };
+
+            // Local voices first: Chrome's online voices can cut off long run-on paragraphs.
+            const preferred = voices.find(voice => isFemaleEnglish(voice) && voice.localService)
+                || voices.find(isFemaleEnglish);
 
             return preferred || voices.find(voice => /en|us|uk/i.test(voice.lang || '')) || voices[0] || null;
         }
 
-        function speakLine(lines, index) {
+        // Browsers load voices asynchronously; without waiting, the first utterance uses the default voice.
+        function waitForVoices(ms = 2000) {
+            if (window.speechSynthesis.getVoices().length) {
+                return Promise.resolve();
+            }
+
+            return new Promise(resolve => {
+                const done = () => {
+                    window.speechSynthesis.removeEventListener('voiceschanged', done);
+                    clearTimeout(timer);
+                    resolve();
+                };
+                const timer = setTimeout(done, ms);
+                window.speechSynthesis.addEventListener('voiceschanged', done);
+            });
+        }
+
+        // Each paragraph (separated by blank lines) is read as one run-on sentence, ignoring line breaks.
+        function currentModelPoemParagraphs() {
+            if (!currentModelPoemLines().length) {
+                return [];
+            }
+
+            const text = extractPoemFromModelText(($('aiOutput').textContent || '').trim());
+            return text
+                .split(/\n\s*\n/)
+                .map(paragraph => paragraph.replace(/\s+/g, ' ').trim())
+                .filter(Boolean);
+        }
+
+        function speakLine(lines, index, voice) {
             if (!ttsReading) {
                 return;
             }
@@ -205,10 +217,10 @@ Output only the poem, with no title, introduction, commentary, or explanation.`;
             }
 
             ttsCurrentLine = index;
-            setTtsStatus(`reading line ${index + 1}/${lines.length}`);
+            setTtsStatus(`reading paragraph ${index + 1}/${lines.length}`);
 
             const utter = new SpeechSynthesisUtterance(lines[index]);
-            const preferredVoice = getPreferredVoice();
+            const preferredVoice = voice;
             utter.voice = preferredVoice;
             utter.rate = 0.9;
             utter.pitch = 1.2;
@@ -218,7 +230,7 @@ Output only the poem, with no title, introduction, commentary, or explanation.`;
                 if (!ttsReading || ttsPaused) {
                     return;
                 }
-                speakLine(lines, index + 1);
+                speakLine(lines, index + 1, voice);
             };
             utter.onerror = () => {
                 stopPoemReading('reader failed on this browser/voice');
@@ -228,14 +240,14 @@ Output only the poem, with no title, introduction, commentary, or explanation.`;
             window.speechSynthesis.speak(utter);
         }
 
-        function startPoemReading() {
+        async function startPoemReading() {
             if (!speechSupported) {
                 setTtsStatus('speech synthesis not supported in this browser');
                 return;
             }
 
-            const lines = currentModelPoemLines();
-            if (!lines.length) {
+            const paragraphs = currentModelPoemParagraphs();
+            if (!paragraphs.length) {
                 setTtsStatus('no model response to read yet');
                 return;
             }
@@ -244,7 +256,8 @@ Output only the poem, with no title, introduction, commentary, or explanation.`;
             ttsReading = true;
             ttsPaused = false;
             updateTtsButtons();
-            speakLine(lines, 0);
+            await waitForVoices();
+            speakLine(paragraphs, 0, getPreferredVoice());
         }
 
         function togglePoemPause() {
@@ -255,11 +268,11 @@ Output only the poem, with no title, introduction, commentary, or explanation.`;
             if (!ttsPaused) {
                 window.speechSynthesis.pause();
                 ttsPaused = true;
-                setTtsStatus(`paused at line ${ttsCurrentLine + 1}`);
+                setTtsStatus(`paused at paragraph ${ttsCurrentLine + 1}`);
             } else {
                 window.speechSynthesis.resume();
                 ttsPaused = false;
-                setTtsStatus(`reading line ${ttsCurrentLine + 1}`);
+                setTtsStatus(`reading paragraph ${ttsCurrentLine + 1}`);
             }
 
             updateTtsButtons();
@@ -659,8 +672,6 @@ Output only the poem, with no title, introduction, commentary, or explanation.`;
                 poem.append(line);
             });
 
-            $('foundLinesText').textContent = lineEntries.map(entry => entry.text).join('\n');
-
             updateTtsButtons();
         }
 
@@ -784,23 +795,7 @@ Output only the poem, with no title, introduction, commentary, or explanation.`;
                 .filter(Boolean);
         }
 
-        function buildPromptBundle() {
-            const prompt = FIXED_PROMPT;
-            const lines = currentFoundLines();
-            const sections = [];
-
-            if (prompt) {
-                sections.push(prompt);
-            }
-
-            sections.push('found lines:');
-            sections.push(lines.map((line, idx) => `${idx + 1}. ${line}`).join('\n'));
-
-            return {lines, text: sections.join('\n\n')};
-        }
-
         function setExportStatus(message) {
-            $('exportStatus').textContent = message;
             $('runStatus').textContent = message;
         }
 
@@ -822,9 +817,7 @@ Output only the poem, with no title, introduction, commentary, or explanation.`;
                     $('backendStatus').textContent = 'backend reachable but health check is invalid';
                 }
             } catch (e) {
-                const staticMessage = 'static GitHub Pages mode · backend unavailable, prompt bundle still works';
-                $('backendStatus').textContent = staticMessage;
-                $('runRewrite').disabled = false;
+                $('backendStatus').textContent = 'static GitHub Pages mode · backend unavailable';
             }
         }
 
@@ -850,7 +843,6 @@ Output only the poem, with no title, introduction, commentary, or explanation.`;
             const browserKey = localStorage.getItem('highq_openai_key') || localStorage.getItem('openai_api_key');
 
             rewriteInFlight = true;
-            $('runRewrite').disabled = true;
             setProgress('rewriting', lines.length);
             setExportStatus('sending lines to model... this may take 5-20 seconds.');
             setAiOutput('waiting for model response...');
@@ -902,7 +894,7 @@ Output only the poem, with no title, introduction, commentary, or explanation.`;
                     const payload = await response.json();
                     text = (payload.output_text || payload.output?.map(item => item.content || []).flat().map(c => c.text || '').join('\n') || '').trim();
                 } else {
-                    throw Error('static GitHub Pages build has no backend. use the prompt bundle in ChatGPT or set a browser key in localStorage as highq_openai_key.');
+                    throw Error('static GitHub Pages build has no backend. set a browser key in localStorage as highq_openai_key.');
                 }
 
                 if (!text) {
@@ -918,41 +910,7 @@ Output only the poem, with no title, introduction, commentary, or explanation.`;
                 setTtsStatus('reader idle');
             } finally {
                 rewriteInFlight = false;
-                $('runRewrite').disabled = false;
             }
-        }
-
-        async function copyPromptBundle() {
-            const {lines, text} = buildPromptBundle();
-            if (!lines.length) {
-                setExportStatus('no lines yet. generate a poem first.');
-                return;
-            }
-
-            try {
-                await navigator.clipboard.writeText(text);
-                setExportStatus('prompt bundle copied to clipboard.');
-            } catch (e) {
-                setExportStatus('could not copy automatically.');
-            }
-        }
-
-        function openInChatGpt() {
-            const {lines, text} = buildPromptBundle();
-            if (!lines.length) {
-                setExportStatus('no lines yet. generate a poem first.');
-                return;
-            }
-
-            const encoded = encodeURIComponent(text);
-            // Keep URL within a conservative length. If too long, ask user to use copy flow.
-            if (encoded.length > 3500) {
-                setExportStatus('bundle is too long for direct URL. use copy prompt bundle.');
-                return;
-            }
-
-            window.open('https://chatgpt.com/?q=' + encoded, '_blank', 'noopener,noreferrer');
-            setExportStatus('opened ChatGPT with your prompt bundle.');
         }
 
         // Build 10 lines by repeatedly pulling random sources and slicing random text chunks.
@@ -1023,13 +981,8 @@ Output only the poem, with no title, introduction, commentary, or explanation.`;
                     renderPoemLines(lines);
                     setExportStatus('10/10 lines found.');
 
-                    if ($('autoRewrite').checked) {
-                        setTtsStatus('waiting for rewrite output...');
-                        await rewriteInHighQ(lines.map(x => x.text));
-                    } else {
-                        setExportStatus('10/10 lines found. auto rewrite is off.');
-                        setTtsStatus('click Rewrite In HighQ to enable reader text.');
-                    }
+                    setTtsStatus('waiting for rewrite output...');
+                    await rewriteInHighQ(lines.map(x => x.text));
                 } else {
                     $('haiku').textContent = 'no lines found this round\ntry again for a fresh pull';
                     setExportStatus('line search ended without 10 lines.');
@@ -1045,11 +998,6 @@ Output only the poem, with no title, introduction, commentary, or explanation.`;
         }
 
         $('generate').addEventListener('click', refresh);
-        $('openChatgpt').addEventListener('click', openInChatGpt);
-        $('copyBundle').addEventListener('click', copyPromptBundle);
-        $('runRewrite').addEventListener('click', () => {
-            rewriteInHighQ();
-        });
         $('readPoem').addEventListener('click', startPoemReading);
         $('pausePoem').addEventListener('click', togglePoemPause);
         $('stopPoem').addEventListener('click', () => {
