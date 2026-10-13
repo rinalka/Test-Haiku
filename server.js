@@ -22,6 +22,36 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// Feed relay limited to URLs listed in sources.js.
+global.window = global.window || {};
+require('./sources.js');
+const FEED_URLS = new Set(
+  Object.values(global.window.SOURCES)
+    .flat()
+    .map(source => source && source.url)
+    .filter(Boolean)
+);
+
+app.get('/api/feed', async (req, res) => {
+  const url = (req.query.url || '').toString();
+  if (!FEED_URLS.has(url)) {
+    return res.status(400).json({error: 'Feed not in sources.js'});
+  }
+
+  try {
+    const response = await fetch(url, {
+      headers: {'User-Agent': 'Mozilla/5.0 (HighQ feed reader)'},
+      timeout: 15000
+    });
+    if (!response.ok) {
+      return res.status(502).json({error: `Feed request failed (${response.status})`});
+    }
+    res.type('application/xml').send(await response.text());
+  } catch (err) {
+    res.status(502).json({error: 'Feed request failed', details: err.message});
+  }
+});
+
 app.post('/api/rewrite', async (req, res) => {
   try {
     if (!OPENAI_API_KEY) {

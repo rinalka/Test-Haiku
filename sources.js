@@ -18,6 +18,39 @@ window.SOURCES = {
   {name:'Google Romance Books News',url:'https://news.google.com/rss/search?q=romance%20novel%20new%20release%20when%3A7d&hl=en-CA&gl=CA&ceid=CA:en'},
   {name:'Google Fiction Bestsellers News',url:'https://news.google.com/rss/search?q=fiction%20bestseller%20new%20title%20when%3A7d&hl=en-CA&gl=CA&ceid=CA:en'}
  ],
+ // Daily quote, word, history and curiosity feeds.
+ dailyFeeds: [
+  {name:'BrainyQuote · Today',url:'https://www.brainyquote.com/link/quotebr.rss'},
+  {name:'BrainyQuote · Art',url:'https://www.brainyquote.com/link/quotear.rss'},
+  {name:'BrainyQuote · Nature',url:'https://www.brainyquote.com/link/quotena.rss'},
+  {name:'BrainyQuote · Funny',url:'https://www.brainyquote.com/link/quotefu.rss'},
+  {name:'BrainyQuote · Love',url:'https://www.brainyquote.com/link/quotelo.rss'},
+  {name:'A.Word.A.Day',url:'https://wordsmith.org/awad/rss1.xml'},
+  {name:'Merriam-Webster · Word of the Day',url:'https://www.merriam-webster.com/wotd/feed/rss2'},
+  {name:'Free Dictionary · Word',url:'https://www.thefreedictionary.com/_/WoD/rss.aspx'},
+  {name:'Free Dictionary · Quote',url:'https://www.thefreedictionary.com/_/WoD/rss.aspx?type=quote'},
+  {name:'Free Dictionary · Idiom',url:'https://www.thefreedictionary.com/_/WoD/rss.aspx?type=idiom'},
+  {name:'Free Dictionary · Article',url:'https://www.thefreedictionary.com/_/WoD/rss.aspx?type=article'},
+  {name:'The Quotations Page',url:'http://www.quotationspage.com/data/qotd.rss'},
+  {name:'This Day in History',url:'https://www.history.com/this-day-in-history/rss'},
+  {name:'On This Day',url:'https://www.onthisday.com/rss/today-in-history.xml'},
+  {name:'Astronomy Picture of the Day',url:'https://apod.com/feed.rss'},
+  {name:'Atlas Obscura',url:'https://www.atlasobscura.com/feeds/latest'},
+  {name:'The Marginalian',url:'https://www.themarginalian.org/feed/'}
+ ],
+ // Curious-fact, literary and science article feeds.
+ curiosityFeeds: [
+  {name:'JSTOR Daily',url:'https://daily.jstor.org/feed/'},
+  {name:'The Paris Review Daily',url:'https://www.theparisreview.org/blog/feed/'},
+  {name:'Interesting Literature',url:'https://interestingliterature.com/feed/'},
+  {name:'Mental Floss',url:'https://www.mentalfloss.com/rss.xml'},
+  {name:'Today I Found Out',url:'https://www.todayifoundout.com/index.php/feed/'},
+  {name:'Smithsonian Smart News',url:'https://www.smithsonianmag.com/rss/smart-news/'},
+  {name:'Open Culture',url:'https://www.openculture.com/feed'},
+  {name:'Amusing Planet',url:'https://www.amusingplanet.com/feeds/posts/default?alt=rss'},
+  {name:'Lapham\'s Quarterly',url:'https://www.laphamsquarterly.org/rss.xml'},
+  {name:'ScienceDaily',url:'https://www.sciencedaily.com/rss/all.xml'}
+ ],
  // Wikipedia topic pools by theme.
  literatureTopics: [
   ['Literature','Literature'],['Poetry','Poetry'],['Modernist literature','Modernist_literature'],

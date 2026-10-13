@@ -58,6 +58,11 @@
         </section>
 
         <section class="ai-output">
+            <h2>Found lines</h2>
+            <pre id="foundLinesText">found lines will appear here as plain text.</pre>
+        </section>
+
+        <section class="ai-output">
             <h2>Model response</h2>
             <pre id="aiOutput">response will appear here after rewrite runs.</pre>
         </section>
@@ -71,6 +76,8 @@
         const {
             feeds,
             bookFeeds = [],
+            dailyFeeds = [],
+            curiosityFeeds = [],
             literatureTopics,
             artTopics,
             placeTopics,
@@ -78,7 +85,37 @@
         } = window.SOURCES;
 
         const topicGroups = [literatureTopics, artTopics, placeTopics];
-        const FIXED_PROMPT = 'Take these 10 random lines of text and build a found poem from exact snippets of those lines. The output should feel grammatical but wandering, like someone trying to stay on topic and slipping away. Style should loosely echo e. e. cummings (line breaks, cadence, lowercase bias), with no forced rhyme. Return ONLY the poem text. Do not add explanation, preface, numbering, markdown fences, or labels.';
+        const FIXED_PROMPT = `You are a found-poetry machine.
+
+Here are 10 unrelated passages of English text.
+
+Your task is to construct a short poem by cutting fragments from these passages and assembling them into new sentences.
+
+Follow these rules:
+
+1. Read all 10 passages and extract interesting fragments: phrases, clauses, sentence openings, subordinate clauses, and other recognizable pieces of well-constructed English. Prefer fragments of 3–10 words rather than isolated words.
+
+2. Use material from at least 7 of the 10 passages, preferably all 10.
+
+3. Assemble the fragments into one or two long, wandering sentences. The fragments should connect grammatically, but their meanings should not necessarily connect at all.
+
+4. Make only the smallest grammatical adjustments needed to join the fragments. You may change articles, pronouns, verb tenses, conjunctions, and punctuation. Preserve the original vocabulary and wording as much as possible.
+
+5. Do not try to make the poem meaningful, coherent, symbolic, or emotionally satisfying. Do not invent a theme. In particular, do not find a clever connection between the sources. Their unrelatedness is essential.
+
+6. The result should sound as though a machine has mechanically assembled fragments of English and then attempted to repair the grammar, without understanding what the resulting sentences mean.
+
+7. Give the sentences a slightly pompous, scholarly, or philosophical cadence, but achieve this through the selection and arrangement of the original fragments, not by inventing sophisticated new language.
+
+8. Avoid rhymes, obvious jokes, punchlines, conventional poetic imagery, and deliberate surrealism. Any absurdity should emerge naturally from the collision of unrelated material.
+
+9. Present the result as free verse, loosely inspired by e. e. cummings: irregular line breaks, occasional indentation, mostly lowercase, and punctuation used for rhythm. Line breaks should interrupt and reshape the rhythm of the sentences.
+
+10. Aim for approximately 60–100 words. Read the result for rhythm, not meaning. It should sound strangely convincing when spoken aloud, even though it makes very little sense.
+
+Most importantly: Do not improve the poem by making it more meaningful. A beautifully grammatical non sequitur is more desirable than a clever metaphor.
+
+Output only the poem, with no title, introduction, commentary, or explanation.`;
 
         const $ = id => document.getElementById(id);
         let lastSelectionKey = '';
@@ -360,6 +397,7 @@
         async function fetchTextThroughRelays(url, ms = SOURCE_TIMEOUT_MS) {
             // Public relays: no credentials; subject to third-party availability.
             const relays = [
+                '/api/feed?url=' + encodeURIComponent(url),
                 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url),
                 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(url)
             ];
@@ -385,18 +423,20 @@
             try {
                 const raw = await fetchTextThroughRelays(source.url);
                 const xml = new DOMParser().parseFromString(raw, 'text/xml');
-                const items = [...xml.querySelectorAll('item')].slice(0, 10);
+                // RSS uses <item>; Atom feeds (e.g. Blogger) use <entry>.
+                const items = [...xml.querySelectorAll('item, entry')].slice(0, 10);
                 if (!items.length) {
                     throw Error('empty feed');
                 }
 
                 const item = random(items);
                 const titleText = item.querySelector('title')?.textContent || '';
-                const descriptionText = item.querySelector('description')?.textContent || '';
+                const descriptionText = item.querySelector('description, summary')?.textContent || '';
+                const linkNode = item.querySelector('link[rel="alternate"]') || item.querySelector('link');
                 return {
                     name: source.name,
                     title: dedupeTitleAndDescription(titleText, descriptionText),
-                    link: item.querySelector('link')?.textContent || source.url,
+                    link: linkNode?.textContent || linkNode?.getAttribute('href') || source.url,
                     ok: true,
                     kind
                 };
@@ -619,17 +659,27 @@
                 poem.append(line);
             });
 
+            $('foundLinesText').textContent = lineEntries.map(entry => entry.text).join('\n');
+
             updateTtsButtons();
         }
 
         async function randomSourceItem(allowWeather = true) {
             const kinds = allowWeather
-                ? ['news', 'books', 'weather', 'wiki']
-                : ['news', 'books', 'wiki'];
+                ? ['news', 'books', 'daily', 'curiosity', 'weather', 'wiki']
+                : ['news', 'books', 'daily', 'curiosity', 'wiki'];
             const kind = random(kinds);
 
             if (kind === 'news' && feeds.length) {
                 return await rssSource(random(feeds), 'news');
+            }
+
+            if (kind === 'daily' && dailyFeeds.length) {
+                return await rssSource(random(dailyFeeds), 'daily');
+            }
+
+            if (kind === 'curiosity' && curiosityFeeds.length) {
+                return await rssSource(random(curiosityFeeds), 'curiosity');
             }
 
             if (kind === 'books') {
@@ -691,8 +741,10 @@
                 }
             });
 
-            const lines = text.split('\n').map(line => line.trim());
-            const isMetaLine = line => {
+            // Keep leading spaces: the prompt asks for cummings-style indentation.
+            const lines = text.split('\n').map(line => line.trimEnd());
+            const isMetaLine = rawLine => {
+                const line = rawLine.trim();
                 if (!line) {
                     return true;
                 }
@@ -713,7 +765,7 @@
                 start += 1;
             }
 
-            return lines.slice(start).join('\n').trim();
+            return lines.slice(start).join('\n').trimEnd();
         }
 
         function currentModelPoemLines() {
