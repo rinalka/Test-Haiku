@@ -56,46 +56,85 @@
             bookFeeds = [],
             dailyFeeds = [],
             curiosityFeeds = [],
+            scholarlyFeeds = [],
+            everydayFeeds = [],
+            pageSources = [],
             literatureTopics,
             artTopics,
             placeTopics,
+            thingTopics = [],
             weatherPlaces
         } = window.SOURCES;
 
-        const topicGroups = [literatureTopics, artTopics, placeTopics];
-        const FIXED_PROMPT = `You are a found-poetry machine.
+        const topicGroups = [literatureTopics, artTopics, placeTopics, thingTopics].filter(g => g && g.length);
+        const FIXED_PROMPT = `Your task is to construct a short found poem by cutting fragments from these passages and rearranging them.
 
-Here are 10 unrelated passages of English text.
+The result should resemble a machine attempting to speak poetically using language it has collected but does not understand.
 
-Your task is to construct a short poem by cutting fragments from these passages and assembling them into new sentences.
+Source material
 
-Follow these rules:
+Read all 10 passages and identify interesting fragments of English, usually 2–7 words long.
 
-1. Read all 10 passages and extract interesting fragments: phrases, clauses, sentence openings, subordinate clauses, and other recognizable pieces of well-constructed English. Prefer fragments of 3–10 words rather than isolated words.
+Use material from at least 7 passages, preferably all 10.
 
-2. Use material from at least 7 of the 10 passages, preferably all 10.
+Preserve the exact vocabulary and word order within each fragment whenever possible.
 
-3. Assemble the fragments into one or two long, wandering sentences. The fragments should connect grammatically, but their meanings should not necessarily connect at all.
+You may make small grammatical adjustments, but do not invent new descriptive language.
 
-4. Make only the smallest grammatical adjustments needed to join the fragments. You may change articles, pronouns, verb tenses, conjunctions, and punctuation. Preserve the original vocabulary and wording as much as possible.
+Avoid using long, intact clauses from the sources. Break them apart.
 
-5. Do not try to make the poem meaningful, coherent, symbolic, or emotionally satisfying. Do not invent a theme. In particular, do not find a clever connection between the sources. Their unrelatedness is essential.
+Construction
 
-6. The result should sound as though a machine has mechanically assembled fragments of English and then attempted to repair the grammar, without understanding what the resulting sentences mean.
+Construct the poem line by line, not sentence by sentence. Do not write prose and then divide it into lines.
 
-7. Give the sentences a slightly pompous, scholarly, or philosophical cadence, but achieve this through the selection and arrangement of the original fragments, not by inventing sophisticated new language.
+Aim for 8–14 short lines and approximately 35–65 words. Hard limit: no more than 15 lines and 90 words.
 
-8. Avoid rhymes, obvious jokes, punchlines, conventional poetic imagery, and deliberate surrealism. Any absurdity should emerge naturally from the collision of unrelated material.
+Most lines should contain 2–6 words. Vary their lengths considerably. Once in a while, a longer phrase or sentence is welcome.
 
-9. Try to relate the last sentence to the first in some esoteric way.
+Stitch the fragments together so the poem flows. Use small connecting words of your own — but, and, in, of, so, was, like, where, until — to join one fragment to the next, so the lines run on as if they were one long, strange sentence. Keep each line short even so; the run-on happens across line breaks. The fragments come from unrelated subjects, but the grammar should treat them as if they belong together.
 
-10. Present the result as free verse, loosely inspired by e. e. cummings: irregular line breaks, occasional indentation, mostly lowercase, and punctuation used for rhythm. Line breaks should interrupt and reshape the rhythm of the sentences.
+For example (illustration only — never reuse these words), the fragments "sally rooney's uk books withdrawn", "gonna find you somehow" and "the oldest dwelling in the western hemisphere" become:
+sally rooney's uk books withdrawn,
+but gonna find you somehow
+in the oldest dwelling in the western hemisphere
 
-11. Aim for approximately 60–100 words. Read the result for rhythm, not meaning. It should sound strangely convincing when spoken aloud, even though it makes very little sense.
+Echoes
 
-Most importantly: Do not improve the poem by making it more meaningful. A beautifully grammatical non sequitur is more desirable than a clever metaphor.
+Let the poem feel as though its random thoughts are secretly related. Repeat or return to a word or image from an earlier line.
 
-Output only the poem, with no title, introduction, commentary, or explanation.`;
+Near the end, include one new line built only from words already used in two or three earlier lines of this poem, spliced into a new combination. One possible shape is "[noun from one line] found in the [noun from another line] of [noun from a third line]", but vary it. It should sound like the poem half-remembering itself. Every word in that line must already appear earlier in the poem.
+
+Simile
+
+Include at least one simile. Take a line and attach "like" or "as" plus a short phrase lifted from a different passage, so that "[a line from the poem]" becomes "[that line] like [a short phrase from another passage]". The result must be grammatically plausible, but the comparison should not make sense as an image: it is a found phrase, not a clever metaphor.
+
+Avoid conventional narrative progression. Do not establish a subject, develop it, and then conclude.
+
+Do not try to make the poem meaningful, symbolic, philosophical, emotionally satisfying, or deliberately absurd.
+
+Poetic character
+
+The poem should have an interesting rhythm when read aloud. Achieve this through repetition, pauses, contrasting line lengths, and the natural sounds of the borrowed language.
+
+Let line breaks create hesitation, surprise, or ambiguity. A line may end in the middle of a grammatical construction.
+
+Use occasional indentation, mostly lowercase letters, and unconventional punctuation, loosely inspired by e. e. cummings.
+
+Allow an occasional grand, scholarly, or authoritative phrase to collide with something mundane or irrelevant.
+
+Avoid rhyme, conventional poetic imagery, clever metaphors, jokes, punchlines, and obvious surrealism.
+
+Most important
+
+Do not make sense on purpose. Do not make nonsense on purpose.
+
+The poem should feel as though a machine has assembled pieces of language according to partially understood rules of grammar and rhythm, without recognizing that the pieces belong to unrelated subjects.
+
+Prefer an intriguing grammatical accident over a beautiful sentence.
+
+Prefer a run-on connection over a list of separate fragments.
+
+Output only the poem — at most 15 lines and 90 words — without title, commentary, or explanation. `;
 
         const $ = id => document.getElementById(id);
         let lastSelectionKey = '';
@@ -113,6 +152,7 @@ Output only the poem, with no title, introduction, commentary, or explanation.`;
         let ttsPaused = false;
         let ttsCurrentLine = -1;
         let ttsCurrentUtterance = null;
+        let ttsAudio = null;
 
         const random = a => a[Math.floor(Math.random() * a.length)];
 
@@ -139,15 +179,20 @@ Output only the poem, with no title, introduction, commentary, or explanation.`;
 
         function updateTtsButtons() {
             const hasPoem = currentModelPoemLines().length > 0;
-            $('readPoem').disabled = !speechSupported || ttsReading || !hasPoem;
-            $('pausePoem').disabled = !speechSupported || !ttsReading;
-            $('stopPoem').disabled = !speechSupported || !ttsReading;
+            $('readPoem').disabled = ttsReading || !hasPoem;
+            $('pausePoem').disabled = !ttsReading;
+            $('stopPoem').disabled = !ttsReading;
             $('pausePoem').textContent = ttsPaused ? 'Resume' : 'Pause';
         }
 
         function stopPoemReading(statusMessage = 'reader stopped') {
             if (speechSupported) {
                 window.speechSynthesis.cancel();
+            }
+            if (ttsAudio) {
+                ttsAudio.pause();
+                URL.revokeObjectURL(ttsAudio.src);
+                ttsAudio = null;
             }
             ttsReading = false;
             ttsPaused = false;
@@ -242,28 +287,74 @@ Output only the poem, with no title, introduction, commentary, or explanation.`;
             window.speechSynthesis.speak(utter);
         }
 
-        async function startPoemReading() {
-            if (!speechSupported) {
-                setTtsStatus('speech synthesis not supported in this browser');
-                return;
-            }
+        // Backend voice performs the poem with emotion and pauses; resolves false if unavailable.
+        async function playBackendReading(text) {
+            try {
+                const response = await fetch('/api/speak', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({text})
+                });
+                if (!response.ok) {
+                    return false;
+                }
 
+                const blob = await response.blob();
+                if (!ttsReading) {
+                    return true;
+                }
+
+                ttsAudio = new Audio(URL.createObjectURL(blob));
+                ttsAudio.onended = () => stopPoemReading('reader complete');
+                ttsAudio.onerror = () => stopPoemReading('reader failed to play audio');
+                await ttsAudio.play();
+                setTtsStatus('reading poem');
+                return true;
+            } catch (e) {
+                return false;
+            }
+        }
+
+        async function startPoemReading() {
             const paragraphs = currentModelPoemParagraphs();
             if (!paragraphs.length) {
                 setTtsStatus('no model response to read yet');
                 return;
             }
 
-            stopPoemReading('starting reader...');
+            stopPoemReading('preparing voice... this may take 5-15 seconds.');
             ttsReading = true;
             ttsPaused = false;
             updateTtsButtons();
+
+            const poemText = extractPoemFromModelText(($('aiOutput').textContent || '').trim());
+            if (await playBackendReading(poemText)) {
+                return;
+            }
+
+            if (!speechSupported) {
+                stopPoemReading('speech synthesis not supported in this browser');
+                return;
+            }
+
             await waitForVoices();
             speakLine(paragraphs, 0, getPreferredVoice());
         }
 
         function togglePoemPause() {
-            if (!speechSupported || !ttsReading) {
+            if (!ttsReading) {
+                return;
+            }
+
+            if (ttsAudio) {
+                ttsPaused = !ttsPaused;
+                if (ttsPaused) {
+                    ttsAudio.pause();
+                } else {
+                    ttsAudio.play();
+                }
+                setTtsStatus(ttsPaused ? 'paused' : 'reading poem');
+                updateTtsButtons();
                 return;
             }
 
@@ -439,7 +530,7 @@ Output only the poem, with no title, introduction, commentary, or explanation.`;
                 const raw = await fetchTextThroughRelays(source.url);
                 const xml = new DOMParser().parseFromString(raw, 'text/xml');
                 // RSS uses <item>; Atom feeds (e.g. Blogger) use <entry>.
-                const items = [...xml.querySelectorAll('item, entry')].slice(0, 10);
+                const items = [...xml.querySelectorAll('item, entry')].slice(0, 60);
                 if (!items.length) {
                     throw Error('empty feed');
                 }
@@ -506,12 +597,14 @@ Output only the poem, with no title, introduction, commentary, or explanation.`;
             const seed = page.replaceAll('_', ' ');
 
             try {
+                // Random offset so repeated topics surface different related pages.
                 const search = await fetchWithTimeout(
                     'https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch='
                     + encodeURIComponent(seed)
-                    + '&srlimit=5&format=json&origin=*'
+                    + '&srlimit=10&sroffset=' + Math.floor(Math.random() * 40)
+                    + '&format=json&origin=*'
                 );
-                const hits = (search.query?.search || []).slice(0, 5);
+                const hits = search.query?.search || [];
                 if (!hits.length) {
                     throw Error('no related pages');
                 }
@@ -677,22 +770,66 @@ Output only the poem, with no title, introduction, commentary, or explanation.`;
             updateTtsButtons();
         }
 
+        // Any Wikipedia article at all, for material no topic list would reach.
+        async function wikipediaRandom() {
+            try {
+                const page = await fetchWithTimeout('https://en.wikipedia.org/api/rest_v1/page/random/summary');
+                const text = clean(page.extract || '');
+                if (!text || looksListLike(text)) {
+                    throw Error('unusable random page');
+                }
+
+                return {
+                    name: 'Wikipedia · ' + page.title,
+                    title: text,
+                    link: page.content_urls?.desktop?.page || 'https://en.wikipedia.org/wiki/' + encodeURIComponent(page.title),
+                    ok: true,
+                    kind: 'wikiRandom'
+                };
+            } catch (e) {
+                return {name: 'Wikipedia · random', title: '', link: '#', ok: false, kind: 'wikiRandom'};
+            }
+        }
+
+        // Song lyrics and poems scraped by the backend (unavailable in static mode).
+        async function pageSource(source) {
+            try {
+                const j = await fetchWithTimeout('/api/page?index=' + encodeURIComponent(source.index), 12000);
+                if (!j.text) {
+                    throw Error('no text');
+                }
+                return {name: source.name, title: j.text, link: j.link, ok: true, kind: 'verse'};
+            } catch (e) {
+                return {name: source.name, title: '', link: source.index, ok: false, kind: 'verse'};
+            }
+        }
+
+        // Feed pools by kind; 'daily' is listed once because it changes only once a day.
+        const feedPools = {
+            news: feeds,
+            daily: dailyFeeds,
+            curiosity: curiosityFeeds,
+            scholarly: scholarlyFeeds,
+            everyday: everydayFeeds
+        };
+
         async function randomSourceItem(allowWeather = true) {
-            const kinds = allowWeather
-                ? ['news', 'books', 'daily', 'curiosity', 'weather', 'wiki']
-                : ['news', 'books', 'daily', 'curiosity', 'wiki'];
+            const kinds = ['news', 'news', 'books', 'daily', 'curiosity', 'curiosity', 'scholarly', 'everyday', 'wiki', 'wikiRandom', 'wikiRandom', 'verse'];
+            if (allowWeather) {
+                kinds.push('weather');
+            }
             const kind = random(kinds);
 
-            if (kind === 'news' && feeds.length) {
-                return await rssSource(random(feeds), 'news');
+            if (feedPools[kind] && feedPools[kind].length) {
+                return await rssSource(random(feedPools[kind]), kind);
             }
 
-            if (kind === 'daily' && dailyFeeds.length) {
-                return await rssSource(random(dailyFeeds), 'daily');
+            if (kind === 'verse' && pageSources.length) {
+                return await pageSource(random(pageSources));
             }
 
-            if (kind === 'curiosity' && curiosityFeeds.length) {
-                return await rssSource(random(curiosityFeeds), 'curiosity');
+            if (kind === 'wikiRandom') {
+                return await wikipediaRandom();
             }
 
             if (kind === 'books') {
@@ -916,6 +1053,25 @@ Output only the poem, with no title, introduction, commentary, or explanation.`;
         }
 
         // Build 10 lines by repeatedly pulling random sources and slicing random text chunks.
+        // Lines used in recent runs are skipped so slow-changing feeds don't repeat.
+        const RECENT_LINES_KEY = 'highq_recent_lines';
+
+        function loadRecentLines() {
+            try {
+                return JSON.parse(localStorage.getItem(RECENT_LINES_KEY) || '[]');
+            } catch (e) {
+                return [];
+            }
+        }
+
+        function saveRecentLines(list) {
+            try {
+                localStorage.setItem(RECENT_LINES_KEY, JSON.stringify(list.slice(0, 80)));
+            } catch (e) {
+                // Storage unavailable: repeats are merely more likely.
+            }
+        }
+
         async function refresh() {
             if (ttsReading) {
                 stopPoemReading('reader stopped: new lines incoming');
@@ -925,7 +1081,10 @@ Output only the poem, with no title, introduction, commentary, or explanation.`;
 
             try {
                 const lines = [];
+                const recentLines = loadRecentLines();
                 const usedUrls = new Set();
+                const usedSourceNames = new Set();
+                let verseCount = 0;
                 const usedColors = new Set();
                 let weatherUsed = false;
 
@@ -955,14 +1114,23 @@ Output only the poem, with no title, introduction, commentary, or explanation.`;
                             continue;
                         }
 
+                        // One line per source, and lyrics/poems only as seasoning.
+                        if (usedSourceNames.has(item.name) || (item.kind === 'verse' && verseCount >= 2)) {
+                            continue;
+                        }
+
                         const line = chunkFromText(item.title, 60, 320);
-                        if (!line) {
+                        if (!line || recentLines.includes(line)) {
                             continue;
                         }
 
                         const color = uniquePastelColor(usedColors);
                         lines.push({text: line, color, url: item.link});
                         usedUrls.add(urlKey);
+                        usedSourceNames.add(item.name);
+                        if (item.kind === 'verse') {
+                            verseCount++;
+                        }
                         usedColors.add(color);
                         setProgress('finding lines', lines.length);
                         setExportStatus(`found ${lines.length}/10 lines...`);
@@ -979,6 +1147,7 @@ Output only the poem, with no title, introduction, commentary, or explanation.`;
                 }
 
                 if (lines.length === 10) {
+                    saveRecentLines([...lines.map(x => x.text), ...recentLines]);
                     lastPoem = lines.map(x => x.text).join('|');
                     renderPoemLines(lines);
                     setExportStatus('10/10 lines found.');
@@ -1009,9 +1178,6 @@ Output only the poem, with no title, introduction, commentary, or explanation.`;
             $('previewStatus').textContent = 'preview loaded. if this looks blank, use open source in new tab.';
         });
         checkBackendHealth();
-        if (!speechSupported) {
-            setTtsStatus('speech synthesis not supported in this browser');
-        }
         updateTtsButtons();
         refresh();
     </script>

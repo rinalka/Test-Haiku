@@ -28,7 +28,7 @@ This project is set up for a Node host such as Render.
 5. Set the environment variable:
    - `OPENAI_API_KEY`
 6. Optional:
-   - `OPENAI_MODEL=gpt-4.1-mini`
+   - `OPENAI_MODEL=gpt-4.1` (the default)
 7. Deploy
 
 The app serves its own frontend and backend on the same URL, so the Chromebook experience stays the same as the local version.
