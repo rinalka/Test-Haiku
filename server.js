@@ -158,10 +158,10 @@ app.get('/api/page', async (req, res) => {
 // Expressive poem reading via OpenAI text-to-speech; the browser voice is the fallback.
 const TTS_MODEL = process.env.TTS_MODEL || 'gpt-4o-mini-tts';
 const TTS_VOICE = process.env.TTS_VOICE || 'coral';
-const TTS_INSTRUCTIONS = `Perform this strange found poem like a poet at a live reading, with real emotion and drama.
+const TTS_INSTRUCTIONS = `Perform this strange found poem like a poet at a live reading, with real emotion and over the top drama.
 Speak slowly. Pause at the end of every line, and take a long, dramatic pause at each blank line between stanzas.
 Let your voice rise and fall: wonder, longing, sudden urgency, hushed intimacy, as if every odd phrase means something deep to you.
-Lean into repeated words and comparisons. Slow down on the last lines and let the final words trail off into silence.`;
+Lean into repeated words and comparisons. Slow down on the last lines, but speak every line clearly and audibly, including the very last one.`;
 
 app.post('/api/speak', async (req, res) => {
   try {
@@ -183,7 +183,8 @@ app.post('/api/speak', async (req, res) => {
       body: JSON.stringify({
         model: TTS_MODEL,
         voice: TTS_VOICE,
-        input: text,
+        // Trailing pause gives the model room so it doesn't clip the final line.
+        input: `${text}\n\n…`,
         instructions: TTS_INSTRUCTIONS,
         response_format: 'mp3'
       })
